@@ -1,0 +1,49 @@
+name: Release binary
+on:
+  workflow_dispatch:
+    inputs:
+      rev:
+        description: Git commit or ref to build
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: release-binary-${{ inputs.rev }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.rev }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Install Rust toolchain
+        run: rustup toolchain install stable --profile minimal --target x86_64-unknown-linux-gnu
+      - name: Build JevGate binary
+        run: cargo +stable build --release --locked --target x86_64-unknown-linux-gnu
+      - name: Prepare release assets
+        id: assets
+        run: |
+          asset=jevgate-x86_64-unknown-linux-gnu
+          cp target/x86_64-unknown-linux-gnu/release/jevgate "$asset"
+          sha256sum "$asset" > "$asset.sha256"
+          echo "tag=bin-$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+          echo "asset=$asset" >> "$GITHUB_OUTPUT"
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.assets.outputs.tag }}
+          RELEASE_ASSET: ${{ steps.assets.outputs.asset }}
+        run: |
+          target=$(git rev-parse HEAD)
+          gh release create "$RELEASE_TAG" \
+            "$RELEASE_ASSET" "$RELEASE_ASSET.sha256" \
+            --target "$target" \
+            --title "JevGate $RELEASE_TAG" \
+            --notes "Linux x86_64 JevGate binary built from commit $target."
