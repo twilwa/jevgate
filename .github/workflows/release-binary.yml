@@ -20,9 +20,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.rev }}
-          fetch-depth: 1
+          ref: main
+          fetch-depth: 0
           persist-credentials: false
+      - name: Checkout requested revision
+        env:
+          REV: ${{ inputs.rev }}
+        run: git checkout --detach "$REV"
       - name: Install Rust toolchain
         run: rustup toolchain install stable --profile minimal --target x86_64-unknown-linux-gnu
       - name: Build JevGate binary
