@@ -124,6 +124,7 @@ pub(super) fn session<'a>(
     context: &'a ConfigContext,
     store: &'a storage::Store,
     evaluator: &'a mut dyn transport::Evaluator,
+    budget: token_budget::TokenBudget,
 ) -> evaluate::Session<'a> {
     evaluate::Session {
         args: options,
@@ -133,7 +134,7 @@ pub(super) fn session<'a>(
         requests: 0,
         paid_input_tokens: 0,
         paid_output_tokens: 0,
-        budget: token_budget::TokenBudget::default(),
+        budget,
         observed: (0, 0),
     }
 }
@@ -161,10 +162,19 @@ pub(super) fn run(
     options: &CheckArgs,
     mock: &mut impl transport::Evaluator,
 ) -> schema::Report {
+    run_with_budget(project, options, mock, token_budget::TokenBudget::default())
+}
+
+pub(super) fn run_with_budget(
+    project: &Project,
+    options: &CheckArgs,
+    mock: &mut impl transport::Evaluator,
+    budget: token_budget::TokenBudget,
+) -> schema::Report {
     let context = project.context();
     let (inputs, mut report) = snapshot(project, options);
     let store = storage::Store::open(&project.0).unwrap();
-    session(options, &context, &store, mock)
+    session(options, &context, &store, mock, budget)
         .evaluate(&inputs, &mut report)
         .unwrap();
     gate::settle(&project.0, &mut report, options).unwrap();

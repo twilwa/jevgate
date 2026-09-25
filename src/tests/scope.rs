@@ -49,7 +49,7 @@ fn a_function_too_large_for_one_request_is_needs_context_and_not_sent() {
     let project = Project::new();
     let mut body = String::from("fn huge() -> usize {\n    let mut total = 0;\n");
     let mut index = 0usize;
-    while body.len() < 200_000 {
+    while body.len() < 3_000 {
         body.push_str(&format!("    total += {index} * {index};\n"));
         index += 1;
     }
@@ -57,8 +57,9 @@ fn a_function_too_large_for_one_request_is_needs_context_and_not_sent() {
     project.write("huge.rs", &format!("{body}\n{}", function("small")));
     let mut options = args();
     options.max_file_bytes = 1_048_576;
+    let budget = crate::token_budget::TokenBudget::default().with_limits(4_096.0, 1_024.0);
     let mut mock = Mock::default();
-    let report = run(&project, &options, &mut mock);
+    let report = run_with_budget(&project, &options, &mut mock, budget);
     assert!(report.complete);
     let huge = &report.files[0];
     let dimension = &huge.dimensions["function_simplification"];
@@ -71,6 +72,26 @@ fn a_function_too_large_for_one_request_is_needs_context_and_not_sent() {
             .all(|r| !r["state"]["functions"].to_string().contains("fn huge"))
     );
     assert_eq!(huge.status, schema::Status::NeedsContext);
+    let small_request = mock
+        .requests
+        .iter()
+        .find(|r| r["state"]["functions"].to_string().contains("fn small"))
+        .unwrap();
+    assert!(
+        budget.fits(small_request),
+        "small still fits the test budget"
+    );
+    let mut oversized_request = small_request.clone();
+    oversized_request["state"]["functions"][0]["name"] = serde_json::json!("huge");
+    oversized_request["state"]["functions"][0]["source"] = serde_json::json!(body);
+    assert!(
+        !budget.fits(&oversized_request),
+        "huge exceeds the test budget"
+    );
+    assert!(
+        crate::token_budget::TokenBudget::default().fits(&oversized_request),
+        "the fixture stays below the production default ceiling"
+    );
 }
 
 #[test]

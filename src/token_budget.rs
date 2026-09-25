@@ -22,12 +22,26 @@ const MAX_BYTES_PER_TOKEN: f64 = 6.0;
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct TokenBudget {
     pub bytes_per_token: f64,
+    #[serde(skip, default = "default_total_tokens")]
+    total_tokens: f64,
+    #[serde(skip, default = "default_state_tokens")]
+    state_tokens: f64,
+}
+
+fn default_total_tokens() -> f64 {
+    TOTAL_TOKENS
+}
+
+fn default_state_tokens() -> f64 {
+    STATE_TOKENS
 }
 
 impl Default for TokenBudget {
     fn default() -> Self {
         Self {
             bytes_per_token: DEFAULT_BYTES_PER_TOKEN,
+            total_tokens: TOTAL_TOKENS,
+            state_tokens: STATE_TOKENS,
         }
     }
 }
@@ -48,7 +62,23 @@ impl TokenBudget {
             } else {
                 Self::default().bytes_per_token
             },
+            ..Self::default()
         }
+    }
+
+    /// Lower provider ceilings in focused tests without changing production defaults.
+    #[cfg(test)]
+    pub(crate) fn with_limits(mut self, total_tokens: f64, state_tokens: f64) -> Self {
+        self.total_tokens = total_tokens;
+        self.state_tokens = state_tokens;
+        self
+    }
+
+    /// Test-only constructor for exercising calibration-independent packing behavior.
+    #[cfg(test)]
+    pub(crate) fn with_bytes_per_token(mut self, bytes_per_token: f64) -> Self {
+        self.bytes_per_token = bytes_per_token;
+        self
     }
 
     /// Replace the ratio with one observed over a batch of fresh requests.
@@ -85,7 +115,7 @@ impl TokenBudget {
             .map(|q| self.tokens_of(q))
             .max()
             .unwrap_or(0) as f64;
-        (self.tokens_of(&provider) as f64) <= TOTAL_TOKENS * MARGIN
-            && state + longest <= STATE_TOKENS * MARGIN
+        (self.tokens_of(&provider) as f64) <= self.total_tokens * MARGIN
+            && state + longest <= self.state_tokens * MARGIN
     }
 }

@@ -242,7 +242,7 @@ fn packing_and_cache_identity_do_not_depend_on_token_calibration() {
     let options = args();
     let inputs = crate::inventory::collect(&options, &project.context(), &[]).unwrap();
     let keys = |bytes_per_token: f64| {
-        let budget = TokenBudget { bytes_per_token };
+        let budget = TokenBudget::default().with_bytes_per_token(bytes_per_token);
         let views = BTreeMap::from([(
             0,
             match crate::file_kind::plan(&inputs[0], &options, &budget).unwrap() {
